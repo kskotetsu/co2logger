@@ -85,10 +85,10 @@ class RealCO2Meter:
             humidity = data[10] if len(data) > 10 else 0
             
             # 温度の高精度計算（小数点1桁対応）
-            # 解析結果: バイト0を使用 (byte + 100) / 10
-            # 例: 0xb0(176) + 100 = 276 → 276/10 = 27.6°C
+            # 解析結果: バイト0を使用 (byte + 102) / 10
+            # 例: 0xb0(176) + 102 = 278 → 278/10 = 27.8°C
             temperature_raw = data[0] if len(data) > 0 else 0
-            temperature = (temperature_raw + 100) / 10.0
+            temperature = (temperature_raw + 102) / 10.0
             
             # 現実的な温度範囲チェック (0-50°C)
             if temperature < 0 or temperature > 50:
@@ -102,7 +102,7 @@ class RealCO2Meter:
             return {
                 "co2_ppm": co2_ppm,
                 "temperature": temperature,
-                "humidity": float(humidity),
+                "humidity": int(humidity),
                 "raw_data": data.hex()
             }
         except (struct.error, IndexError) as e:
