@@ -28,18 +28,12 @@ class SmartCO2Monitor:
         self.exporter = ConsoleExporter(verbose=True)
         self.oui_detector = OUIBasedCO2Detector()
         self.verified_co2_devices: Dict[str, str] = {}  # アドレス -> デバイスタイプ
-        self.device_last_update: Dict[str, datetime] = {}
-        self.update_interval = 30
-        self.discovery_timeout = 60
+        self.target_device: Optional[str] = None  # 監視対象デバイスアドレス
+        self.discovery_timeout = 30  # 発見タイムアウトを短縮
         
-    def should_update_device(self, device_address: str) -> bool:
-        """デバイス更新が必要かチェック"""
-        last_update = self.device_last_update.get(device_address)
-        if last_update is None:
-            return True
-        
-        elapsed = (datetime.now() - last_update).total_seconds()
-        return elapsed >= self.update_interval
+    def is_target_device(self, device_address: str) -> bool:
+        """対象デバイスかチェック"""
+        return self.target_device is None or self.target_device == device_address
     
     def verify_co2_device(self, device: BLEDevice, advertisement_data: AdvertisementData) -> Optional[str]:
         """厳密なCO2デバイス検証"""
@@ -85,10 +79,7 @@ class SmartCO2Monitor:
             # SwitchBotは除外（誤検出防止のため）
             
             if co2_data:
-                # 更新時刻記録
-                self.device_last_update[device.address] = datetime.now()
-                
-                # データ出力
+                # データ出力（即座に表示）
                 asyncio.create_task(self.exporter.export(co2_data))
                 
                 # OUI情報付きログ
@@ -115,23 +106,28 @@ class SmartCO2Monitor:
                 if device.address not in self.verified_co2_devices:
                     self.verified_co2_devices[device.address] = device_type
                     
-                    oui = OUIDatabase.extract_oui(device.address)
-                    oui_info = OUIDatabase.get_oui_info(device.address)
-                    company = oui_info.get("company", "Unknown") if oui_info else "Unknown"
-                    confidence = OUIDatabase.get_confidence_level(device.address)
-                    
-                    device_type_name = {
-                        "real_co2_meter": "実際のCO2計"
-                    }.get(device_type, device_type)
-                    
-                    logger.info(f"🎯 高精度CO2デバイス発見: {device_type_name}")
-                    logger.info(f"   アドレス: {device.address}")
-                    logger.info(f"   OUI: {oui} ({company})")
-                    logger.info(f"   信頼性: {confidence}")
-                    logger.info(f"   デバイス名: {device.name or '(名前なし)'}")
+                    # 最初に見つかったデバイスを対象に設定
+                    if self.target_device is None:
+                        self.target_device = device.address
+                        
+                        oui = OUIDatabase.extract_oui(device.address)
+                        oui_info = OUIDatabase.get_oui_info(device.address)
+                        company = oui_info.get("company", "Unknown") if oui_info else "Unknown"
+                        confidence = OUIDatabase.get_confidence_level(device.address)
+                        
+                        device_type_name = {
+                            "real_co2_meter": "実際のCO2計"
+                        }.get(device_type, device_type)
+                        
+                        logger.info(f"🎯 対象CO2デバイス決定: {device_type_name}")
+                        logger.info(f"   アドレス: {device.address}")
+                        logger.info(f"   OUI: {oui} ({company})")
+                        logger.info(f"   信頼性: {confidence}")
+                        logger.info(f"   デバイス名: {device.name or '(名前なし)'}")
+                        logger.info(f"   以降このデバイスのみ監視します")
                 
-                # データ更新チェック
-                if self.should_update_device(device.address):
+                # 対象デバイスのデータを即座に処理
+                if self.is_target_device(device.address):
                     self.process_co2_data(device, advertisement_data, device_type)
             else:
                 # 未知のOUIを調査
@@ -144,30 +140,31 @@ class SmartCO2Monitor:
     
     async def discovery_phase(self):
         """高精度発見フェーズ"""
-        logger.info("🎯 OUIベース高精度CO2デバイス発見を開始...")
+        logger.info("🎯 CO2デバイス発見を開始...")
         logger.info(f"対象OUI: {list(OUIDatabase.CO2_DEVICE_OUIS.keys())}")
         logger.info(f"発見タイムアウト: {self.discovery_timeout}秒")
+        logger.info("最初に見つかったOUI一致デバイスを監視対象に設定します")
         
         scanner = BleakScanner(self.detection_callback)
         await scanner.start()
         await asyncio.sleep(self.discovery_timeout)
         await scanner.stop()
         
-        if self.verified_co2_devices:
-            logger.info(f"✅ {len(self.verified_co2_devices)}台の確実なCO2デバイスを発見:")
-            for address, device_type in self.verified_co2_devices.items():
-                oui = OUIDatabase.extract_oui(address)
-                oui_info = OUIDatabase.get_oui_info(address)
-                company = oui_info.get("company", "Unknown") if oui_info else "Unknown"
-                
-                device_type_name = {
-                    "real_co2_meter": "実際のCO2計",
-                    "switchbot_co2": "SwitchBot CO2センサー"
-                }.get(device_type, device_type)
-                
-                logger.info(f"  📍 {address} - {device_type_name} ({company}, OUI: {oui})")
+        if self.target_device:
+            device_type = self.verified_co2_devices[self.target_device]
+            oui = OUIDatabase.extract_oui(self.target_device)
+            oui_info = OUIDatabase.get_oui_info(self.target_device)
+            company = oui_info.get("company", "Unknown") if oui_info else "Unknown"
+            
+            device_type_name = {
+                "real_co2_meter": "実際のCO2計",
+                "switchbot_co2": "SwitchBot CO2センサー"
+            }.get(device_type, device_type)
+            
+            logger.info(f"✅ 監視対象CO2デバイス決定:")
+            logger.info(f"  📍 {self.target_device} - {device_type_name} ({company}, OUI: {oui})")
         else:
-            logger.warning("⚠️  確実なCO2デバイスが見つかりませんでした")
+            logger.warning("⚠️  OUI一致のCO2デバイスが見つかりませんでした")
             
             # 検出統計表示
             stats = self.oui_detector.get_detection_statistics()
@@ -178,13 +175,13 @@ class SmartCO2Monitor:
     
     async def monitoring_phase(self, duration: int = 300):
         """監視フェーズ"""
-        if not self.verified_co2_devices:
-            logger.info("監視する確実なCO2デバイスがありません")
+        if not self.target_device:
+            logger.info("監視する対象CO2デバイスがありません")
             return
         
-        logger.info("📡 高精度CO2デバイス監視を開始...")
-        logger.info(f"監視デバイス数: {len(self.verified_co2_devices)}台")
-        logger.info(f"更新間隔: {self.update_interval}秒")
+        logger.info("📡 リアルタイムCO2監視を開始...")
+        logger.info(f"監視対象: {self.target_device}")
+        logger.info(f"更新方式: ブロードキャスト受信時に即座に表示")
         logger.info(f"監視時間: {duration}秒")
         logger.info("Ctrl+C で終了")
         
@@ -207,11 +204,11 @@ class SmartCO2Monitor:
         # フェーズ1: 高精度発見
         await self.discovery_phase()
         
-        if self.verified_co2_devices:
+        if self.target_device:
             # フェーズ2: 監視
             await self.monitoring_phase(monitoring_duration)
         else:
-            logger.info("確実なCO2デバイスが見つからないため、監視を終了します")
+            logger.info("OUI一致のCO2デバイスが見つからないため、監視を終了します")
 
 async def main():
     """メイン関数"""
@@ -220,9 +217,9 @@ async def main():
     print("=" * 70)
     print("✨ 特徴:")
     print("  - OUI（会社固有番号）ベース高精度検出")
-    print("  - 誤検出を大幅削減")
-    print("  - 既知のCO2デバイスメーカーのみ対象")
-    print("  - 30秒間隔でリアルタイム表示")
+    print("  - 最初に見つかったOUI一致デバイスのみ監視")
+    print("  - ブロードキャスト受信時に即座に表示")
+    print("  - 30秒タイマー廃止でリアルタイム性向上")
     print()
     print("🎯 対象OUI（会社固有番号）:")
     for oui, info in OUIDatabase.CO2_DEVICE_OUIS.items():
