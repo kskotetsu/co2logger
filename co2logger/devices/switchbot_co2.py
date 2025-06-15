@@ -69,7 +69,7 @@ class SwitchBotCO2Sensor(BluetoothDeviceBase):
                     if device_type == cls.DEVICE_TYPE_ALT:  # 0x10のみ（実測値）
                         # CO2センサーの追加検証：CO2値が現実的な範囲か
                         byte5_val = data[5] if len(data) > 5 else 0
-                        co2_calc = int(byte5_val * 7.67)
+                        co2_calc = int(byte5_val * 7.68)
                         if 300 <= co2_calc <= 5000:  # 現実的なCO2範囲
                             return True
         
@@ -130,9 +130,9 @@ class SwitchBotCO2Sensor(BluetoothDeviceBase):
                                 # CO2値の候補を計算
                                 co2_candidates = []
                                 if len(values) >= 4:
-                                    # パターン1: バイト5 × 7.67 (実測から発見した計算式)
+                                    # パターン1: バイト5 × 7.68 (実測から発見した計算式、精度調整)
                                     byte5_val = data[5] if len(data) > 5 else 0
-                                    co2_calc = int(byte5_val * 7.67)
+                                    co2_calc = int(byte5_val * 7.68)
                                     if 300 <= co2_calc <= 5000:
                                         co2_candidates.append(co2_calc)
                                     
