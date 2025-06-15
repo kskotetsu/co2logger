@@ -87,10 +87,12 @@ class SmartCO2Monitor:
                 oui_info = OUIDatabase.get_oui_info(device.address)
                 company = oui_info.get("company", "Unknown") if oui_info else "Unknown"
                 
-                logger.info(f"[{company}] {device.address} (OUI: {oui})")
-                logger.info(f"  CO2: {co2_data.co2_ppm} ppm")
-                logger.info(f"  温度: {co2_data.temperature}°C")
-                logger.info(f"  湿度: {co2_data.humidity}%")
+                # 対象デバイスのみ詳細ログを表示
+                if self.target_device and device.address == self.target_device:
+                    logger.info(f"[{company}] {device.address} (OUI: {oui})")
+                    logger.info(f"  CO2: {co2_data.co2_ppm} ppm")
+                    logger.info(f"  温度: {co2_data.temperature}°C")
+                    logger.info(f"  湿度: {co2_data.humidity}%")
                 
         except Exception as e:
             logger.error(f"CO2データ処理エラー ({device.address}): {e}")
@@ -130,10 +132,11 @@ class SmartCO2Monitor:
                 if self.is_target_device(device.address):
                     self.process_co2_data(device, advertisement_data, device_type)
             else:
-                # 未知のOUIを調査
-                suggestion = self.oui_detector.suggest_new_oui(device, advertisement_data)
-                if suggestion:
-                    logger.debug(f"🔍 新しいCO2デバイス候補: {suggestion['oui']} ({device.address})")
+                # 監視対象が決定していない場合のみ未知OUIを調査
+                if self.target_device is None:
+                    suggestion = self.oui_detector.suggest_new_oui(device, advertisement_data)
+                    if suggestion:
+                        logger.debug(f"🔍 新しいCO2デバイス候補: {suggestion['oui']} ({device.address})")
                     
         except Exception as e:
             logger.error(f"検出コールバックエラー: {e}")
