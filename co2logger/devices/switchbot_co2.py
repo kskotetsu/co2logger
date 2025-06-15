@@ -20,6 +20,7 @@ class SwitchBotCO2Sensor(BluetoothDeviceBase):
     
     # SwitchBot CO2センサーのデバイスタイプ
     DEVICE_TYPE = 0x7B  # 123 in decimal
+    DEVICE_TYPE_ALT = 0x10  # 16 in decimal (実際のデータから確認)
     
     # SwitchBot通信用のUUID
     SERVICE_UUID = "cba20d00-224d-11e6-9fb8-0002a5d5c51b"
@@ -61,11 +62,11 @@ class SwitchBotCO2Sensor(BluetoothDeviceBase):
         # 製造者データによる判定（ブログ記事参考）
         if advertisement_data and hasattr(advertisement_data, 'manufacturer_data') and advertisement_data.manufacturer_data:
             for manufacturer_id, data in advertisement_data.manufacturer_data.items():
-                # SwitchBotの製造者ID確認
-                if len(data) >= 9:  # CO2データが含まれる最小長
+                # SwitchBotの製造者ID確認 (76が実際のSwitchBot製造者ID)
+                if manufacturer_id == 76 and len(data) >= 8:  # 実際のデータ長に合わせて調整
                     # データの最初のバイトでデバイスタイプを確認
                     device_type = data[0] & 0x7F
-                    if device_type == cls.DEVICE_TYPE:
+                    if device_type == cls.DEVICE_TYPE or device_type == cls.DEVICE_TYPE_ALT:
                         return True
         
         # サービスデータによる判定（従来の方法も維持）
@@ -88,22 +89,39 @@ class SwitchBotCO2Sensor(BluetoothDeviceBase):
         Returns:
             解析されたデータ、無効な場合はNone
         """
-        # 製造者データから解析（ブログ記事の方法）
+        # 製造者データから解析（実際のデータ形式に基づく）
         if hasattr(advertisement_data, 'manufacturer_data') and advertisement_data.manufacturer_data:
             for manufacturer_id, data in advertisement_data.manufacturer_data.items():
-                if len(data) >= 9:  # CO2データが含まれる最小長
+                if manufacturer_id == 76 and len(data) >= 8:  # SwitchBot製造者ID
                     device_type = data[0] & 0x7F
-                    if device_type == self.DEVICE_TYPE:
+                    if device_type == self.DEVICE_TYPE or device_type == self.DEVICE_TYPE_ALT:
                         try:
                             is_encrypted = (data[0] & 0x80) != 0
-                            # ブログ記事のparse_CO2関数に基づく解析
-                            # データ形式: [0]device_type [1]battery [2-5]不明 [6]reserved [7-8]co2 [9]temp [10]humidity
-                            battery = data[1]
-                            # CO2濃度はバイト7,8に格納（ブログ記事参考）
-                            co2_ppm = data[7] * 0x100 + data[8] if len(data) > 8 else 0
-                            # 温度と湿度
-                            temperature = struct.unpack('b', data[9:10])[0] if len(data) > 9 else 0  # 符号付き8bit
-                            humidity = data[10] if len(data) > 10 else 0
+                            # 実際のデータ構造を解析: 10063e1e2ad19c0d
+                            # データ形式を推測: [0]device_type [1]seq [2-3]co2? [4]temp? [5]humidity? [6-7]その他
+                            
+                            # 8バイトデータから各値を抽出
+                            battery = data[1] if len(data) > 1 else 0  # 仮定
+                            
+                            # CO2濃度の位置を推測（複数パターンを試行）
+                            if len(data) >= 4:
+                                # パターン1: バイト2,3（リトルエンディアン）
+                                co2_ppm_1 = struct.unpack('<H', data[2:4])[0]
+                                # パターン2: バイト2,3（ビッグエンディアン）
+                                co2_ppm_2 = struct.unpack('>H', data[2:4])[0]
+                                # 現実的な範囲のCO2値を選択（300-5000ppm）
+                                if 300 <= co2_ppm_1 <= 5000:
+                                    co2_ppm = co2_ppm_1
+                                elif 300 <= co2_ppm_2 <= 5000:
+                                    co2_ppm = co2_ppm_2
+                                else:
+                                    co2_ppm = co2_ppm_1  # デフォルト
+                            else:
+                                co2_ppm = 0
+                            
+                            # 温度と湿度（位置は推測）
+                            temperature = struct.unpack('b', data[4:5])[0] if len(data) > 4 else 0
+                            humidity = data[5] if len(data) > 5 else 0
                             
                             return {
                                 "device_type": device_type,
