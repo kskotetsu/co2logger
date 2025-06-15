@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 class OUIDatabase:
     """Bluetooth OUI データベース"""
     
-    # 既知のCO2デバイスメーカーのOUI
+    # 既知のCO2デバイスメーカーのOUI（実際のCO2計のみ）
     CO2_DEVICE_OUIS = {
-        # 実際のCO2計のOUI
+        # 実際のCO2計のOUI（確実にCO2計と判明しているもののみ）
         "B0:E9:FE": {
             "company": "CO2計メーカー",
             "device_types": ["co2_meter"],
@@ -24,16 +24,12 @@ class OUIDatabase:
             "confidence": "high"
         },
         
-        # SwitchBotのOUI (参考)
-        "69:FB:B8": {  # SwitchBotの一般的なOUI例
-            "company": "SwitchBot",
-            "device_types": ["co2_sensor", "temperature_sensor", "switch"],
-            "manufacturer_id": 76,
-            "confidence": "medium"
-        },
+        # 注意: SwitchBotは除外
+        # 理由: SwitchBotには温湿度計、スイッチ、カーテンなど
+        #       CO2センサー以外のデバイスが多数存在するため
+        #       OUIだけでは正確なCO2デバイス特定が困難
         
-        # その他のCO2デバイスメーカー（将来拡張用）
-        # 新しいデバイスが見つかったら追加
+        # 将来、新しい確実なCO2専用メーカーが見つかったら追加
     }
     
     # 確実にCO2デバイスではないOUI（除外リスト）
@@ -45,6 +41,10 @@ class OUIDatabase:
         "20:02:AF",  # Apple
         "38:F9:D3",  # Apple
         "B4:F0:AB",  # Apple
+        # SwitchBot関連OUI（CO2センサー以外のデバイスが多いため除外）
+        "74:8A:32",  # SwitchBot（温湿度計、スイッチ等含む）
+        "4A:ED:3F",  # SwitchBot（カーテン、プラグ等含む）
+        "69:FB:B8",  # SwitchBot（その他デバイス）
         # 他の非CO2デバイス
     }
     

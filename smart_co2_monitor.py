@@ -67,11 +67,10 @@ class SmartCO2Monitor:
                             except:
                                 pass
         
-        # ステップ3: SwitchBot CO2センサー検証
-        if SwitchBotCO2Sensor.is_co2_sensor(device, advertisement_data):
-            # 追加のOUI検証は省略（SwitchBotは複数OUIを使用する可能性）
-            logger.info(f"✅ SwitchBot CO2センサーを確認: {device.address} (OUI: {OUIDatabase.extract_oui(device.address)})")
-            return "switchbot_co2"
+        # ステップ3: SwitchBot CO2センサー検証 → 除外
+        # 理由: SwitchBotは温湿度計、スイッチ、カーテンなど多様なデバイスがあり
+        #       OUIだけでは正確なCO2デバイス特定が困難
+        # 今回は実際のCO2計（B0:E9:FE）のみに限定
         
         return None
     
@@ -83,9 +82,7 @@ class SmartCO2Monitor:
             if device_type == "real_co2_meter":
                 meter = RealCO2Meter(device)
                 co2_data = meter.create_sensor_data_from_advertisement(advertisement_data)
-            elif device_type == "switchbot_co2":
-                sensor = SwitchBotCO2Sensor(device)
-                co2_data = sensor.create_sensor_data_from_advertisement(advertisement_data)
+            # SwitchBotは除外（誤検出防止のため）
             
             if co2_data:
                 # 更新時刻記録
@@ -124,8 +121,7 @@ class SmartCO2Monitor:
                     confidence = OUIDatabase.get_confidence_level(device.address)
                     
                     device_type_name = {
-                        "real_co2_meter": "実際のCO2計",
-                        "switchbot_co2": "SwitchBot CO2センサー"
+                        "real_co2_meter": "実際のCO2計"
                     }.get(device_type, device_type)
                     
                     logger.info(f"🎯 高精度CO2デバイス発見: {device_type_name}")
