@@ -85,10 +85,11 @@ class RealCO2Meter:
             humidity = data[10] if len(data) > 10 else 0
             
             # 温度の高精度計算（小数点1桁対応）
-            # 解析結果: バイト0を使用 (byte + 102) / 10
-            # 例: 0xb0(176) + 102 = 278 → 278/10 = 27.8°C
-            temperature_raw = data[0] if len(data) > 0 else 0
-            temperature = (temperature_raw + 102) / 10.0
+            # 解析結果: バイト9使用、線形関係による計算
+            # 計算式: 温度 = 0.2 * byte9 - 3.2
+            # 例: byte9=155 → 0.2*155-3.2 = 27.8°C
+            temperature_raw = data[9] if len(data) > 9 else 0
+            temperature = 0.2 * temperature_raw - 3.2
             
             # 現実的な温度範囲チェック (0-50°C)
             if temperature < 0 or temperature > 50:
