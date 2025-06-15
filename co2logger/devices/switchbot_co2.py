@@ -59,15 +59,19 @@ class SwitchBotCO2Sensor(BluetoothDeviceBase):
         if device.name and ("co2" in device.name.lower() or "switchbot" in device.name.lower()):
             return True
         
-        # 製造者データによる判定（ブログ記事参考）
+        # 製造者データによる判定（実測データに基づく厳密なチェック）
         if advertisement_data and hasattr(advertisement_data, 'manufacturer_data') and advertisement_data.manufacturer_data:
             for manufacturer_id, data in advertisement_data.manufacturer_data.items():
                 # SwitchBotの製造者ID確認 (76が実際のSwitchBot製造者ID)
                 if manufacturer_id == 76 and len(data) >= 8:  # 実際のデータ長に合わせて調整
                     # データの最初のバイトでデバイスタイプを確認
                     device_type = data[0] & 0x7F
-                    if device_type == cls.DEVICE_TYPE or device_type == cls.DEVICE_TYPE_ALT:
-                        return True
+                    if device_type == cls.DEVICE_TYPE_ALT:  # 0x10のみ（実測値）
+                        # CO2センサーの追加検証：CO2値が現実的な範囲か
+                        byte5_val = data[5] if len(data) > 5 else 0
+                        co2_calc = int(byte5_val * 7.67)
+                        if 300 <= co2_calc <= 5000:  # 現実的なCO2範囲
+                            return True
         
         # サービスデータによる判定（従来の方法も維持）
         if advertisement_data and hasattr(advertisement_data, 'service_data') and advertisement_data.service_data:
