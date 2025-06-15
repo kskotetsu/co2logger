@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-実際のCO2計 (B0:E9:FE:58:74:AE, 製造者ID: 2409) 専用クラス
+実際のCO2計 (OUI: B0:E9:FE, 製造者ID: 2409) 専用クラス
 """
 
 import struct
