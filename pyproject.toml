@@ -1,0 +1,9 @@
+[project]
+name = "co2logger"
+version = "0.1.0"
+description = "SwitchBot CO2 sensor Bluetooth data reader"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "bleak>=0.21.1",
+]
