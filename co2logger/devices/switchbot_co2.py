@@ -126,29 +126,27 @@ class SwitchBotCO2Sensor(BluetoothDeviceBase):
                                 # CO2値の候補を計算
                                 co2_candidates = []
                                 if len(values) >= 4:
-                                    # パターン1: そのまま使用
+                                    # パターン1: バイト5 × 7.67 (実測から発見した計算式)
+                                    byte5_val = data[5] if len(data) > 5 else 0
+                                    co2_calc = int(byte5_val * 7.67)
+                                    if 300 <= co2_calc <= 5000:
+                                        co2_candidates.append(co2_calc)
+                                    
+                                    # パターン2: そのまま使用（念のため）
                                     for val in values:
                                         if 300 <= val <= 5000:
                                             co2_candidates.append(val)
                                     
-                                    # パターン2: 下位バイト使用
+                                    # パターン3: 下位バイト使用
                                     for val in values:
                                         low_byte = val & 0xFF
                                         if 300 <= low_byte * 10 <= 5000:
                                             co2_candidates.append(low_byte * 10)
-                                    
-                                    # パターン3: 特殊計算（実測に基づく）
-                                    # 744ppmの計算を逆算: 97*8-32=744 なので
-                                    val_97 = values[2] & 0xFF  # 0x61の下位 = 97
-                                    if val_97 == 97:
-                                        co2_candidates.append(val_97 * 8 - 32)  # 744
                                 
-                                # 最適なCO2値を選択
+                                # 最適なCO2値を選択（バイト5計算を優先）
                                 co2_ppm = 400  # デフォルト
-                                for candidate in co2_candidates:
-                                    if 300 <= candidate <= 5000:
-                                        co2_ppm = candidate
-                                        break
+                                if co2_candidates:
+                                    co2_ppm = co2_candidates[0]  # 最初の候補（バイト5計算）を優先
                                 
                                 # 温度と湿度の解析
                                 # 実測: 28°C, 59%
