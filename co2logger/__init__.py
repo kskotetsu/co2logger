@@ -1,5 +1,5 @@
 """
-SwitchBot CO2»óµü BluetoothÇü¿êüÀü
+SwitchBot CO2ã‚»ãƒ³ã‚µãƒ¼ Bluetoothãƒ‡ãƒ¼ã‚¿ãƒªãƒ¼ãƒ€ãƒ¼
 """
 from .models import CO2SensorData, TemperatureData, HumidityData
 from .core import BluetoothDeviceBase, DeviceScanner
