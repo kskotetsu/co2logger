@@ -7,7 +7,7 @@ OUI（会社固有番号）ベースの高精度自動検出
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
