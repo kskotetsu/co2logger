@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class TargetCO2Monitor:
     """特定のCO2センサーのみを監視"""
     
-    def __init__(self, target_address: str = "49:4B:91:4B:53:83"):
+    def __init__(self, target_address: str = "B0:E9:FE:58:74:AE"):
         self.target_address = target_address.upper()
         self.exporter = ConsoleExporter(verbose=True)
         self.last_update = None
@@ -49,9 +49,9 @@ class TargetCO2Monitor:
                 return
             
             for manufacturer_id, data in advertisement_data.manufacturer_data.items():
-                if manufacturer_id == 76 and len(data) >= 8:
-                    device_type = data[0] & 0x7F
-                    if device_type == 0x10:  # CO2センサータイプ
+                if manufacturer_id == 2409 and len(data) >= 8:  # 実際のCO2計の製造者ID
+                    # データ構造を解析する必要がある
+                    # 生データ: b0e9fe5874ae3464009c3b001102e800
                         # データ解析・表示
                         sensor = SwitchBotCO2Sensor(device)
                         co2_data = sensor.create_sensor_data_from_advertisement(advertisement_data)
