@@ -165,6 +165,16 @@ class DeviceScanner:
         if device.name and "switchbot" in device.name.lower():
             return True
         
+        # Check by manufacturer data (ブログ記事の方法)
+        if advertisement_data and hasattr(advertisement_data, 'manufacturer_data') and advertisement_data.manufacturer_data:
+            for manufacturer_id, data in advertisement_data.manufacturer_data.items():
+                if len(data) >= 1:
+                    # SwitchBotデバイスタイプの範囲をチェック
+                    device_type = data[0] & 0x7F
+                    # 既知のSwitchBotデバイスタイプ（0x7B = CO2センサー）
+                    if device_type in [0x7B]:  # 必要に応じて他のタイプも追加
+                        return True
+        
         # Check by service data
         if advertisement_data and hasattr(advertisement_data, 'service_data') and advertisement_data.service_data:
             # SwitchBot devices advertise on service UUID "fee7"

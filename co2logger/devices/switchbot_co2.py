@@ -55,10 +55,20 @@ class SwitchBotCO2Sensor(BluetoothDeviceBase):
             CO2センサーの場合True
         """
         # デバイス名による判定
-        if device.name and "co2" in device.name.lower():
+        if device.name and ("co2" in device.name.lower() or "switchbot" in device.name.lower()):
             return True
         
-        # サービスデータによる判定
+        # 製造者データによる判定（ブログ記事参考）
+        if advertisement_data and hasattr(advertisement_data, 'manufacturer_data') and advertisement_data.manufacturer_data:
+            for manufacturer_id, data in advertisement_data.manufacturer_data.items():
+                # SwitchBotの製造者ID確認
+                if len(data) >= 9:  # CO2データが含まれる最小長
+                    # データの最初のバイトでデバイスタイプを確認
+                    device_type = data[0] & 0x7F
+                    if device_type == cls.DEVICE_TYPE:
+                        return True
+        
+        # サービスデータによる判定（従来の方法も維持）
         if advertisement_data and hasattr(advertisement_data, 'service_data') and advertisement_data.service_data:
             for uuid, data in advertisement_data.service_data.items():
                 if isinstance(uuid, str) and uuid.lower() == "fee7" and len(data) > 0:
@@ -78,37 +88,67 @@ class SwitchBotCO2Sensor(BluetoothDeviceBase):
         Returns:
             解析されたデータ、無効な場合はNone
         """
-        if not hasattr(advertisement_data, 'service_data') or not advertisement_data.service_data:
-            return None
+        # 製造者データから解析（ブログ記事の方法）
+        if hasattr(advertisement_data, 'manufacturer_data') and advertisement_data.manufacturer_data:
+            for manufacturer_id, data in advertisement_data.manufacturer_data.items():
+                if len(data) >= 9:  # CO2データが含まれる最小長
+                    device_type = data[0] & 0x7F
+                    if device_type == self.DEVICE_TYPE:
+                        try:
+                            is_encrypted = (data[0] & 0x80) != 0
+                            # ブログ記事のparse_CO2関数に基づく解析
+                            # データ形式: [0]device_type [1]battery [2-5]不明 [6]reserved [7-8]co2 [9]temp [10]humidity
+                            battery = data[1]
+                            # CO2濃度はバイト7,8に格納（ブログ記事参考）
+                            co2_ppm = data[7] * 0x100 + data[8] if len(data) > 8 else 0
+                            # 温度と湿度
+                            temperature = struct.unpack('b', data[9:10])[0] if len(data) > 9 else 0  # 符号付き8bit
+                            humidity = data[10] if len(data) > 10 else 0
+                            
+                            return {
+                                "device_type": device_type,
+                                "is_encrypted": is_encrypted,
+                                "manufacturer_id": manufacturer_id,
+                                "battery": battery,
+                                "co2_ppm": co2_ppm,
+                                "temperature": float(temperature),
+                                "humidity": float(humidity),
+                                "raw_data": data.hex()
+                            }
+                        except (struct.error, IndexError) as e:
+                            logger.error(f"製造者データ解析エラー: {e}")
+                            continue
         
-        for uuid, data in advertisement_data.service_data.items():
-            if isinstance(uuid, str) and uuid.lower() == "fee7" and len(data) >= 7:
-                device_type = data[0] & 0x7F
-                if device_type != self.DEVICE_TYPE:
-                    return None
-                
-                is_encrypted = (data[0] & 0x80) != 0
-                
-                # CO2センサーデータの解析（SwitchBot仕様に基づく）
-                # データ形式: [device_type][battery][co2_low][co2_high][temp][humidity][reserved]
-                try:
-                    battery = data[1]
-                    co2_ppm = struct.unpack('<H', data[2:4])[0]  # リトルエンディアン
-                    temperature = struct.unpack('b', data[4:5])[0]  # 符号付き8bit
-                    humidity = data[5]
+        # サービスデータからの解析（従来の方法も維持）
+        if hasattr(advertisement_data, 'service_data') and advertisement_data.service_data:
+            for uuid, data in advertisement_data.service_data.items():
+                if isinstance(uuid, str) and uuid.lower() == "fee7" and len(data) >= 7:
+                    device_type = data[0] & 0x7F
+                    if device_type != self.DEVICE_TYPE:
+                        continue
                     
-                    return {
-                        "device_type": device_type,
-                        "is_encrypted": is_encrypted,
-                        "battery": battery,
-                        "co2_ppm": co2_ppm,
-                        "temperature": float(temperature),
-                        "humidity": float(humidity),
-                        "raw_data": data.hex()
-                    }
-                except (struct.error, IndexError) as e:
-                    logger.error(f"アドバタイズメントデータ解析エラー: {e}")
-                    return None
+                    is_encrypted = (data[0] & 0x80) != 0
+                    
+                    # CO2センサーデータの解析（SwitchBot仕様に基づく）
+                    # データ形式: [device_type][battery][co2_low][co2_high][temp][humidity][reserved]
+                    try:
+                        battery = data[1]
+                        co2_ppm = struct.unpack('<H', data[2:4])[0]  # リトルエンディアン
+                        temperature = struct.unpack('b', data[4:5])[0]  # 符号付き8bit
+                        humidity = data[5]
+                        
+                        return {
+                            "device_type": device_type,
+                            "is_encrypted": is_encrypted,
+                            "battery": battery,
+                            "co2_ppm": co2_ppm,
+                            "temperature": float(temperature),
+                            "humidity": float(humidity),
+                            "raw_data": data.hex()
+                        }
+                    except (struct.error, IndexError) as e:
+                        logger.error(f"サービスデータ解析エラー: {e}")
+                        continue
         
         return None
     
@@ -274,6 +314,33 @@ class SwitchBotCO2Sensor(BluetoothDeviceBase):
                 return None
         
         return self.latest_data
+    
+    def create_sensor_data_from_advertisement(self, advertisement_data: AdvertisementData) -> Optional[CO2SensorData]:
+        """
+        ブロードキャストデータからCO2SensorDataオブジェクトを作成
+        
+        Args:
+            advertisement_data: アドバタイズメントデータ
+            
+        Returns:
+            CO2SensorDataオブジェクト、作成できない場合はNone
+        """
+        parsed_data = self.parse_advertisement_data(advertisement_data)
+        if not parsed_data:
+            return None
+        
+        try:
+            return CO2SensorData(
+                timestamp=datetime.now(timezone.utc),
+                co2_ppm=parsed_data["co2_ppm"],
+                temperature=parsed_data["temperature"],
+                humidity=parsed_data["humidity"],
+                device_address=self.device_address,
+                raw_data=parsed_data["raw_data"]
+            )
+        except Exception as e:
+            logger.error(f"CO2SensorData作成エラー: {e}")
+            return None
     
     def get_device_info(self) -> Dict[str, Any]:
         """
