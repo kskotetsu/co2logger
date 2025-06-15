@@ -81,18 +81,23 @@ class RealCO2Meter:
             # 例: 02e7 = 743ppm, 02e8 = 744ppm
             co2_ppm = struct.unpack('>H', data[13:15])[0]
             
-            # 温度・湿度の位置を推測
-            # バイト10=59 (湿度候補)
-            # バイト7=100 (温度候補? 10度高い可能性)
+            # 温度・湿度の位置（精度解析に基づく改善）
             humidity = data[10] if len(data) > 10 else 0
-            temperature_raw = data[7] if len(data) > 7 else 0
             
-            # 温度の調整（実測28°Cに合わせる）
-            # バイト7=100 → 28°C への変換
-            if temperature_raw > 70:
-                temperature = temperature_raw - 72  # 100-72=28
-            else:
-                temperature = float(temperature_raw)
+            # 温度の高精度計算（小数点1桁対応）
+            # 解析結果: バイト0を使用 (byte + 100) / 10
+            # 例: 0xb0(176) + 100 = 276 → 276/10 = 27.6°C
+            temperature_raw = data[0] if len(data) > 0 else 0
+            temperature = (temperature_raw + 100) / 10.0
+            
+            # 現実的な温度範囲チェック (0-50°C)
+            if temperature < 0 or temperature > 50:
+                # フォールバック: 従来の方法
+                temperature_raw_fallback = data[7] if len(data) > 7 else 0
+                if temperature_raw_fallback > 70:
+                    temperature = float(temperature_raw_fallback - 72)
+                else:
+                    temperature = float(temperature_raw_fallback)
             
             return {
                 "co2_ppm": co2_ppm,
